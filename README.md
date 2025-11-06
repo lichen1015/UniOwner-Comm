@@ -1,8 +1,4 @@
-# CoSDH (CVPR 2025)
-
-CoSDH: Communication-Efficient Collaborative Perception via Supply-Demand Awareness and Intermediate-Late Hybridization
-
-[Paper](https://openaccess.thecvf.com/content/CVPR2025/papers/Xu_CoSDH_Communication-Efficient_Collaborative_Perception_via_Supply-Demand_Awareness_and_Intermediate-Late_Hybridization_CVPR_2025_paper.pdf)
+# UniOwner-Comm
 
 ## Installation
 
@@ -41,23 +37,10 @@ Note that
 1. `*.pkl` file in `v2xsim2_info` can be found in [Google Drive](https://drive.google.com/drive/folders/16_KkyjV9gVFxvj2YDCzQm1s9bVTwI0Fw?usp=sharing)
 2. use  complemented annotation for DAIR-V2X in `my_dair_v2x` [Google Drive](https://drive.google.com/file/d/13g3APNeHBVjPcF-nTuUoNOSGyTzdfnUK/view?usp=sharing), see [Complemented Annotations for DAIR-V2X-C](https://github.com/yifanlu0227/CoAlign?tab=readme-ov-file#complemented-annotations-for-dair-v2x-c-) for more details.
 
-## Checkpoints
+[//]: # (## Checkpoints)
 
-Download: [Google Drive](https://drive.google.com/drive/folders/1T3LLCn257Gynoqmm_HeXJu3Q8PBYGHfL?usp=sharing)
-
-## Citation
-
-Please cite our work if you find it useful.
-```bibtex
-@InProceedings{Xu_2025_CVPR,
-    author    = {Xu, Junhao and Zhang, Yanan and Cai, Zhi and Huang, Di},
-    title     = {CoSDH: Communication-Efficient Collaborative Perception via Supply-Demand Awareness and Intermediate-Late Hybridization},
-    booktitle = {Proceedings of the Computer Vision and Pattern Recognition Conference (CVPR)},
-    month     = {June},
-    year      = {2025},
-    pages     = {6834-6843}
-}
-```
+[//]: # ()
+[//]: # (Download: [Google Drive]&#40;https://drive.google.com/drive/folders/1T3LLCn257Gynoqmm_HeXJu3Q8PBYGHfL?usp=sharing&#41;)
 
 ## Acknowlege
 
