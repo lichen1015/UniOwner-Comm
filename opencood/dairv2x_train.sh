@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=1 python opencood/tools/train.py -y opencood/hypes_yaml/dairv2x/lidar_only/pointpillar_cosdh.yaml # [--model_dir MODEL_FOLDER]
