@@ -58,7 +58,6 @@ def main():
 
     hypes = yaml_utils.load_yaml(None, opt)
         
-    
     hypes['validate_dir'] = hypes['test_dir']
     if "OPV2V" in hypes['test_dir'] or "v2xsim" in hypes['test_dir']:
         assert "test" in hypes['validate_dir']
@@ -197,14 +196,14 @@ def main():
                 If you want 3D visualization, uncomment lines below
                 """
                 vis_save_path = os.path.join(vis_save_path_root, '3d_%05d.png' % i)
-                simple_vis.visualize(infer_result,
-                                    batch_data['ego'][
-                                        'origin_lidar'][0],
-                                    hypes['postprocess']['gt_range'],
-                                    vis_save_path,
-                                    method='3d',
-                                    left_hand=left_hand,
-                                    point_color_mode='radial', point_cmap='viridis', point_radius=1)
+                # simple_vis.visualize(infer_result,
+                #                     batch_data['ego'][
+                #                         'origin_lidar'][0],
+                #                     hypes['postprocess']['gt_range'],
+                #                     vis_save_path,
+                #                     method='3d',
+                #                     left_hand=left_hand,
+                #                     point_color_mode='radial', point_cmap='viridis', point_radius=1)
                  
                 vis_save_path = os.path.join(vis_save_path_root, 'bev_%05d.png' % i)
                 simple_vis.visualize(infer_result,
@@ -214,7 +213,8 @@ def main():
                                     vis_save_path,
                                     method='bev',
                                     left_hand=left_hand,
-                                    point_color_mode='radial', point_cmap='viridis', point_radius=1)
+                                    point_color_mode='radial', point_radius=-1) # point_cmap='viridis', 
+                                    
         torch.cuda.empty_cache()
     
     print(f"total frame: {i + 1}")

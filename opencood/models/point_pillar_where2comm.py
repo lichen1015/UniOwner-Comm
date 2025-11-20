@@ -52,7 +52,7 @@ class PointPillarWhere2comm(nn.Module):
             self.out_channel = args['shrink_header']['dim'][-1]
 
         self.compression = False
-        if "compression" in args:
+        if "compression" in args and args['compression'] != 0:
             self.compression = True
             self.naive_compressor = NaiveCompressor(256, args['compression'])
 
@@ -141,9 +141,10 @@ class PointPillarWhere2comm(nn.Module):
         rm = self.reg_head(fused_feature)
         
         fps = getattr(self, "eval_fps", 10.0)         # 评测FPS（如 10Hz）
-        _, _, Hi, Wi = spatial_features_2d.shape
-        bits = (Hi * Wi) * _elem_bits(spatial_features_2d.dtype)
-        per_frame_bps = comm_rate * bits * 4
+        avg_collaborators = (sum(record_len) / (len(record_len) + 1e-5)) - 1.0
+        _, Ci, Hi, Wi = spatial_features_2d.shape
+        bits = (Hi * Wi * Ci) * _elem_bits(spatial_features_2d.dtype)
+        per_frame_bps = comm_rate * bits * avg_collaborators
         
         if torch.is_tensor(comm_rate):
             comm_rate = float(comm_rate.detach().float().mean().item())

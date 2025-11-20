@@ -5,7 +5,7 @@ test_dir: "/mnt/datasets/v2xsim2_info/v2xsim_infos_test.pkl"
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 4
+  batch_size: &batch_size 6
   epoches: 31
   eval_freq: 5
   save_freq: 5

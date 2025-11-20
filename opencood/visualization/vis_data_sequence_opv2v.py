@@ -12,8 +12,10 @@ SAVE_VIS_INTERVAL = 40                # 和 inference 一样：每 40 帧保存�
 OUTPUT_ROOT = "/mnt/workspace/collabor/CoSDH-main/visualization_results/opv2v"
 DRAW_BOXES = True                    # False=无框；如需带框可设 True
 NUM_WORKERS = 0                       # 调试稳妥，OK 后可改 2
-SAMPLED_RANGE = None
+SAMPLED_RANGE = None                  # 例如 range(1330,1360)；None 表示整套测试集
 
+# ======== 小工具 ========
+# ===== 新增：把拼接点云附带 agent_id =====
 def _build_fused_pcd_with_agent_id(batch):
     """
     返回 shape [N, 5]: x, y, z, intensity, agent_id
@@ -46,6 +48,7 @@ def _build_fused_pcd_with_agent_id(batch):
     fused = torch.cat(pcs, dim=0)                         # [N,5]
     return fused
 
+# ===== 新增：BEV 渲染器（支持 intensity / z-value / agent / density 上色）=====
 import numpy as np
 import imageio
 from matplotlib import cm
@@ -76,10 +79,12 @@ def _render_bev_colored(pcd_np, pc_range, out_path,
 
     x = pcd_np[:, 0]; y = pcd_np[:, 1]
 
+    # 过滤出画布内的点
     m = (x >= xmin) & (x < xmax) & (y >= ymin) & (y < ymax)
     x = x[m]; y = y[m]
     val = val[m] if val is not None else None
 
+    # 物理坐标 -> 画布像素坐标（将 +y 设为向上）
     u = ((x - xmin) * px_per_meter).astype(np.int32)
     v = (H - 1 - (y - ymin) * px_per_meter).astype(np.int32)
 
@@ -90,12 +95,15 @@ def _render_bev_colored(pcd_np, pc_range, out_path,
         canvas = np.zeros((H, W, 3), dtype=np.uint8)
 
     if mode == 'density':
+        # 用 2D 直方图做热力
         hist, _, _ = np.histogram2d(v, u, bins=[H, W], range=[[0, H], [0, W]])
         hist = np.clip(hist, 0, np.percentile(hist, 99.5))
         hist = hist / (hist.max() + 1e-6)
         rgb = cm.get_cmap(cmap)(hist)[:, :, :3] * 255.0
         canvas = rgb.astype(np.uint8)
     else:
+        # 连续数值 -> 颜色
+        # 做稳健归一化（去掉极端值）
         lo, hi = np.percentile(val, 1), np.percentile(val, 99)
         if hi <= lo:
             lo, hi = val.min(), val.max() + 1e-6
@@ -116,6 +124,7 @@ def _render_bev_colored(pcd_np, pc_range, out_path,
 
     imageio.imwrite(out_path, canvas)
 
+# ===== 新增：包装函数，直接从 batch 渲染融合BEV彩色图 =====
 def save_fused_bev_colored(batch, pc_range, out_dir, frame_idx,
                            modes=('intensity','z-value','agent','density'),
                            cmap='turbo', px_per_meter=10):
@@ -166,6 +175,7 @@ def main():
     current_path = os.path.dirname(os.path.realpath(__file__))
     hypes = load_yaml(os.path.join(current_path, '../hypes_yaml/visualization_opv2v.yaml'))
 
+    # 和 inference.py 保持**相同**的数据顺序设置（很重要：shuffle=False）
     dataset = build_dataset(hypes, visualize=True, train=False)
     subset = dataset if SAMPLED_RANGE is None else Subset(dataset, SAMPLED_RANGE)
 
@@ -196,9 +206,11 @@ def main():
                         point_color_mode='radial', point_cmap='viridis', point_radius=1 # viridis
                         )
 
-        if DRAW_BOXES:  # 带框
+        # 如需“带框”版本，把 DRAW_BOXES 设 True（会读取 infer_result 中的 pred/gt）
+        if DRAW_BOXES:
             gt_box_tensor = dataset.post_processor.generate_gt_bbx(batch)
             infer_result = {"gt_box_tensor": gt_box_tensor}
+            # 把 batch 的相机字段传进去（便于 visualize 取）
             infer_result["image_inputs"] = batch['ego']['image_inputs']
             simple_vis.visualize(infer_result, ego_pcd, pc_range,
                                  os.path.join(frame_dir, f'ego_bev_{i:05d}.png'),

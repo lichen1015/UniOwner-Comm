@@ -99,6 +99,8 @@ model:
       upsample_strides: [1, 2, 4]
       num_upsample_filter: [128, 128, 128]
 
+    feat_dim: [64, 128, 256]
+
     shrink_header:
       kernal_size: [ 3 ]
       stride: [ 1 ]
@@ -114,7 +116,7 @@ kd_flag:
   teacher_path: "TODO"
 
 loss:
-  core_method: point_pillar_disconet_loss
+  core_method: point_pillar_loss
   args:
     pos_cls_weight: 2.0
     cls:

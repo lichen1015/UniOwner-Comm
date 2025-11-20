@@ -72,7 +72,7 @@ postprocess: &postprocess_params
 
 # model related
 model:
-  core_method: point_pillar_where2comm_uoc
+  core_method: point_pillar_uniowner_comm
   args:
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
@@ -80,6 +80,7 @@ model:
     max_cav: *max_cav
     backbone_fix: false
     supervise_single: false
+    req_points_threshold: 4
 
     pillar_vfe:
       use_norm: true
@@ -95,7 +96,6 @@ model:
       num_filters: &num_filters [64, 128, 256]
       upsample_strides: [1, 2, 4]
       num_upsample_filter: [128, 128, 128]
-      compression: 0
       voxel_size: *voxel_size
     
     feat_dim: [64, 128, 256]
@@ -105,18 +105,18 @@ model:
       stride: [ 1 ]
       padding: [ 1 ]
       dim: [ 256 ]
-      input_dim: 384 # 128 * 3
+      input_dim: 384
     anchor_num: *anchor_num
 
     where2comm:
-      fully: false
+      fully: false                 
       fusion: att
       communication:
-        threshold: 0.01
-        gaussian_smooth:
+        # threshold: 0.01
+        gaussian_smooth: 
           k_size: 5
-          c_sigma: 1.0
-  
+          c_sigma: 0.1
+
     dir_args: *dir_args
 
 loss:

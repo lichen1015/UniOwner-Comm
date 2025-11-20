@@ -13,6 +13,7 @@ from opencood.models.fuse_modules.submodular2comm import Mono2comm
 from opencood.models.fuse_modules.gnn_selector import RelationalGNNSelector
 from opencood.utils.transformation_utils import normalize_pairwise_tfm
 import math
+from opencood.models.point_pillar_uniowner_comm import OAOHead
 
 def _elem_bits(dtype: torch.dtype) -> int:
     # 如有量化/自定义位宽，改这里
@@ -26,40 +27,6 @@ def _elem_bits(dtype: torch.dtype) -> int:
         torch.int8: 8,  torch.uint8: 8,
         torch.bool: 1,  # 若按字节计改成 8
     }.get(dtype, 32)
-
-# ------------------------------
-# 轻量通信置信图头：3x3上下文 + 1x1输出 → sigmoid
-# 输出 conf_map ∈ (0,1)，形状 (sumN,1,H0,W0)
-# ------------------------------
-def _gn_groups(c):
-    # 选一个能整除通道数的 GN 组数（优先 8/4/2/1）
-    for g in (8, 4, 2, 1):
-        if c % g == 0:
-            return g
-    return 1
-
-class ConvGNAct(nn.Sequential):
-    def __init__(self, c_in, c_out, k=3, s=1, d=1, groups=1, act='silu'):
-        padding = ((k - 1) // 2) * d
-        g = _gn_groups(c_out)
-        super().__init__(
-            nn.Conv2d(c_in, c_out, k, s, padding, dilation=d, groups=groups, bias=False),
-            nn.GroupNorm(g, c_out),
-            nn.SiLU(inplace=True) if act == 'silu' else nn.ReLU(inplace=True),
-        )
-
-class ObjHead(nn.Module):
-    def __init__(self, in_channels: int, hidden_ratio: float = 0.5):
-        super().__init__()
-        h = max(8, int(in_channels * hidden_ratio))
-        self.trunk = nn.Sequential(
-            ConvGNAct(in_channels, h, k=3, d=2),
-            ConvGNAct(h, h, k=3, d=1),
-            ConvGNAct(h, 1, k=1),
-        )
-
-    def forward(self, x):
-        return torch.sigmoid(self.trunk(x))  # (sumN, 1, H, W)
 
 
 class PointPillarWhere2commUoc(nn.Module):
@@ -106,7 +73,7 @@ class PointPillarWhere2commUoc(nn.Module):
                                   kernel_size=1) # BIN_NUM = 2
             
             
-        self.obj_head = ObjHead(in_channels=self.out_channel, hidden_ratio=0.5)
+        self.obj_head = OAOHead(in_channels=self.out_channel, hidden_ratio=0.5)
  
         if 'backbone_fix' in args.keys() and args['backbone_fix']:
             self.backbone_fix()
@@ -183,28 +150,23 @@ class PointPillarWhere2commUoc(nn.Module):
         psm = self.cls_head(fused_feature)
         rm = self.reg_head(fused_feature)
         
-        # === 正确/稳定的外层带宽近似（按“比特/帧”计算）===
-        _, Cc, Hh, Ww = spatial_features_2d.shape
+        fps = getattr(self, "eval_fps", 10.0)         # 评测FPS（如 10Hz）
+        avg_collaborators = (sum(record_len) / (len(record_len) + 1e-5)) - 1.0
+        _, Ci, Hi, Wi = spatial_features_2d.shape
+        bits = (Hi * Wi * Ci) * _elem_bits(spatial_features_2d.dtype)
+        per_frame_bps = comm_rate * bits * avg_collaborators
+        
         if torch.is_tensor(comm_rate):
             comm_rate = float(comm_rate.detach().float().mean().item())
         else:
             comm_rate = float(comm_rate if comm_rate is not None else 1.0)
-
-        # === 关键公式 ===
-        # 每个被选中的cell发送 Cc 个元素 → 每cell的载荷是 Cc * bits_per_elem
-        bits_i = (Hh * Ww) * Cc * _elem_bits(spatial_features_2d.dtype)
-        comm_bits_frame_per_agent = comm_rate * bits_i
-
-        # （可选）把比特/帧折算成 Kbps 以及论文横轴的 log2(Kbps)
-        fps = getattr(self, "eval_fps", 10.0)  # 你的评测FPS，默认10Hz；按需改
-        kbps_per_agent = comm_bits_frame_per_agent * fps / 1000.0
-        # kbps_total     = comm_bits_frame_total  * fps / 1000.0
-        # log2_kbps_per_agent = math.log2(max(kbps_per_agent, 1e-9))
+        
+        kbps_per_frame = (per_frame_bps * fps) / 1000.0 
 
         output_dict = {'cls_preds': psm,
                        'reg_preds': rm,
                        'comm_rate': comm_rate,
-                       'comm_kbps_per_agent': kbps_per_agent,
+                       'comm_kbps_per_frame': kbps_per_frame,
         }
 
         if self.use_dir:

@@ -1,11 +1,11 @@
-name: v2xset_where2comm
+name: v2xset_where2comm_uoc
 root_dir: '/mnt/datasets/v2x-vit/train'
 validate_dir: '/mnt/datasets/v2x-vit/validate'
 test_dir: '/mnt/datasets/v2x-vit/test'
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 4
+  batch_size: &batch_size 2
   epoches: 21
   eval_freq: 5
   save_freq: 5
@@ -69,7 +69,7 @@ postprocess: &postprocess_params
 
 # model related
 model:
-  core_method: point_pillar_where2comm
+  core_method: point_pillar_where2comm_uoc
   args:
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
@@ -77,7 +77,6 @@ model:
     max_cav: *max_cav
     backbone_fix: false
     supervise_single: false
-    compression: 16
 
     pillar_vfe:
       use_norm: true
@@ -110,7 +109,7 @@ model:
       fully: false
       fusion: att
       communication:
-        threshold: 0.01
+        k_ratio: 1.0
         gaussian_smooth:
           k_size: 5
           c_sigma: 1.0

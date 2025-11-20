@@ -5,7 +5,7 @@ test_dir: "/mnt/datasets/open2v_data_dumping/test"
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 2
+  batch_size: &batch_size 8
   epoches: 31
   eval_freq: 5
   save_freq: 5
@@ -78,7 +78,7 @@ model:
     max_cav: *max_cav
     backbone_fix: false
     supervise_single: false
-    compression: 0
+    compression: 8
 
     pillar_vfe:
       use_norm: true
@@ -111,7 +111,7 @@ model:
       fully: false
       fusion: att
       communication:
-        threshold: 0.01
+        # threshold: 0.00
         gaussian_smooth:
           k_size: 5
           c_sigma: 1.0

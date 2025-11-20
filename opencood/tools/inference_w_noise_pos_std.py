@@ -9,7 +9,7 @@ import time
 from typing import OrderedDict
 import importlib
 import torch
-# import open3d as o3d
+import open3d as o3d
 from torch.utils.data import DataLoader, Subset
 import numpy as np
 import opencood.hypes_yaml.yaml_utils as yaml_utils
@@ -23,33 +23,12 @@ from datetime import datetime
 from pathlib import Path
 import math 
 
-
-def _make_log_path(opt, out_dir: str = "./logs4bandwidth/") -> Path:
-    """
-    Name the log by KRatio or Threshold (prefer KRatio if有效且>0),
-    and include a timestamp to avoid overwrite.
-    """
-    k_ratio = getattr(opt, "k_ratio", None)
-    threshold = getattr(opt, "threshold", None)
-    total_mbps = getattr(opt, "total_mbps", None)
-
-    tag = None
-    if total_mbps is not None:
-        tag = f"Mbps_{total_mbps:.4f}"
-    elif k_ratio is not None and isinstance(k_ratio, (int, float)) and k_ratio > 0:
-        tag = f"KRatio_{k_ratio:.4f}"
-    elif isinstance(threshold, (int, float)) and threshold > 0:
-        tag = f"Threshold_{threshold:.4f}"
-    else:
-        tag = "Default"
-
-    # ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return Path(opt.model_dir)/ Path(out_dir)/ f"comm_eval_{tag}.txt"
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 def write_eval_log(
     opt,
     msg,
-    out_dir: str = "./log4bandwidth/",
+    out_dir: str = "./noise_setting",
     also_print: bool = True,
 ) -> Path:
     """
@@ -57,7 +36,7 @@ def write_eval_log(
     named by KRatio or Threshold.
     Returns the file path.
     """
-    path = _make_log_path(opt, out_dir=out_dir)
+    path = Path(opt.model_dir)/ Path(out_dir)/ f"Noise_setting_{opt.noise_level}.txt"
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(path, "a", encoding="utf-8") as f:
@@ -81,20 +60,17 @@ def test_parser():
     parser.add_argument('--save_npy', action='store_true',
                         help='whether to save prediction and gt result'
                              'in npy file')
-    parser.add_argument('--is_vis', action='store_true',
-                        help='whether to visualize')
     parser.add_argument('--no_score', action='store_true',
                         help="whether print the score of prediction")
     parser.add_argument('--note', default="", type=str, help="any other thing?")
-    parser.add_argument('--threshold', type=float, help="epoch used")
-    parser.add_argument('--k_ratio', type=float, help="epoch used")
-    parser.add_argument('--total_mbps', type=float, help="total_mbps")
+    parser.add_argument('--noise_level', type=float, default=0.0, help="pos_std used")
     parser.add_argument('--epoch', default=-1, type=int, help="epoch used")
     opt = parser.parse_args()
     return opt
 
 
 def set_random_seed(seed):
+    import random
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -106,28 +82,29 @@ def set_random_seed(seed):
 
 
 def main():
+    """
+    原代码实现太弱智了，直接基于inference bandwidth写出来
+    """
     opt = test_parser()
 
     assert opt.fusion_method in ['late', 'early', 'intermediate', 'no', 'no_w_uncertainty', 'single', 'intermediatelate'] 
    
     hypes = yaml_utils.load_yaml(None, opt)
-    if opt.total_mbps is not None:
-        hypes['model']['args']['where2comm']['communication']['total_mbps'] = opt.total_mbps
-        print(f"Active Total Mbps={opt.total_mbps}")
-    elif opt.k_ratio is not None and opt.k_ratio < 1.0:
-        hypes['model']['args']['where2comm']['communication']['k_ratio'] = opt.k_ratio
-        print(f"Active K ratio={opt.k_ratio}")
-        
-    elif opt.k_ratio is None and opt.threshold is not None:
-        # print(f"Before modify threshold={hypes['model']['args']['where2comm']['communication']['threshold']}")
-        hypes['model']['args']['where2comm']['communication']['threshold'] = opt.threshold
-        print(f"After modify threshold, now is ({hypes['model']['args']['where2comm']['communication']['threshold']})")
-    else:
-        print("No bandwidth limit")
-        if 'where2comm' in hypes['model']['args']:
-            hypes['model']['args']['where2comm']['communication']['threshold'] = 0.0
-            hypes['model']['args']['where2comm']['communication']['k_ratio'] = 1.0
-        
+    # 在这里实现噪声加入
+    noise_setting = OrderedDict()
+    noise_args = {  'pos_std': opt.noise_level,
+                    'rot_std': 0.0,
+                    'pos_mean': 0.0,
+                    'rot_mean': 0.0}
+
+    noise_setting['add_noise'] = True
+    noise_setting['args'] = noise_args
+
+
+    # build dataset for each noise setting
+    print('Dataset Building')
+    print(f"Noise Added: {noise_args}.")
+    hypes["noise_setting"] = noise_setting
         
     hypes['validate_dir'] = hypes['test_dir']
     if "OPV2V" in hypes['test_dir'] or "v2xsim" in hypes['test_dir']:
@@ -187,6 +164,7 @@ def main():
     # ===== 带宽累计器（只统计特征字节） =====
     total_bytes_feat = 0
     total_comm_rates = 0
+    
 
     for i, batch_data in tqdm(enumerate(data_loader)):
 
@@ -265,56 +243,19 @@ def main():
                 cav_box_np, lidar_agent_record = inference_utils.get_cav_box(batch_data)
                 infer_result.update({"cav_box_np": cav_box_np, \
                                      "lidar_agent_record": lidar_agent_record})
-                
-            if (i % opt.save_vis_interval == 0) and (pred_box_tensor is not None) and opt.is_vis:
-                vis_save_path_root = os.path.join(opt.model_dir, f'vis_{infer_info}')
-                if not os.path.exists(vis_save_path_root):
-                    os.makedirs(vis_save_path_root)
-
-                """
-                If you want 3D visualization, uncomment lines below
-                """
-                vis_save_path = os.path.join(vis_save_path_root, '3d_%05d.png' % i)
-                # simple_vis.visualize(infer_result,
-                #                     batch_data['ego'][
-                #                         'origin_lidar'][0],
-                #                     hypes['postprocess']['gt_range'],
-                #                     vis_save_path,
-                #                     method='3d',
-                #                     left_hand=left_hand,
-                #                     point_color_mode='radial', point_cmap='viridis', point_radius=1)
-                 
-                vis_save_path = os.path.join(vis_save_path_root, 'bev_%05d.png' % i)
-                simple_vis.visualize(infer_result,
-                                    batch_data['ego'][
-                                        'origin_lidar'][0],
-                                    hypes['postprocess']['gt_range'],
-                                    vis_save_path,
-                                    method='bev',
-                                    left_hand=left_hand,
-                                    point_color_mode='radial', point_cmap='viridis', point_radius=1)
         torch.cuda.empty_cache()
     
     print(f"total frame: {i + 1}")
     _, ap50, ap70 = eval_utils.eval_final_results(result_stat,
-                                opt.model_dir, infer_info, save_yaml=True)
+                                opt.model_dir, infer_info, save_yaml=False)
     comm_kbps_per_frame = float(total_bytes_feat / (i + 1))
     avg_comm_rate = float(total_comm_rates / (i + 1))
     
     msg = "[Percesion AP]:"\
         f"The Average Precision at IOU 0.5={(ap50 * 100):.2f} |"\
         f"The Average Precision at IOU 0.7={(ap70 * 100):.2f} \n"
-    msg += "[Eval/Inference] Comm (feat only): " \
-        f"KRatio={opt.k_ratio}|"\
-        f"Threshold={opt.threshold} | "\
-        f"Total BandWidth={(total_bytes_feat/1000):.2f} Mbps |"\
-        f"avg comm_rate={float(avg_comm_rate):.2f} |"\
-        f"per-frame={comm_kbps_per_frame/1000:.2f} Mbps | "\
-        f"log2(per-frame)={float(math.log2(comm_kbps_per_frame)):.2f} kbps| "
-        # f"log2@4cars(per-agent)={float(math.log2(comm_kbps_per_frame/4)):.2f} kbps|"\
-        # f"log2@total_4cars={float(math.log2(total_bytes_feat/4)):.2f} kbps"
     # print(msg)
-    write_eval_log(opt, msg)
+    write_eval_log(opt, msg, out_dir='./pos_std_noise/')
 
 if __name__ == '__main__':
     main()

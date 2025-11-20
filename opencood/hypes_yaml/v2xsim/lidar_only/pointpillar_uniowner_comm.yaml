@@ -1,11 +1,11 @@
-name: v2xsim_select_comm
+name: v2xsim_winner_take-all
 root_dir: "/mnt/datasets/v2xsim2_info/v2xsim_infos_train.pkl"
 validate_dir: "/mnt/datasets/v2xsim2_info/v2xsim_infos_val.pkl"
 test_dir: "/mnt/datasets/v2xsim2_info/v2xsim_infos_test.pkl"
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 8
+  batch_size: &batch_size 4
   epoches: 31
   eval_freq: 5
   save_freq: 5
@@ -80,13 +80,12 @@ postprocess:
 
 # model related
 model:
-  core_method: point_pillar_selective_comm
+  core_method: point_pillar_uniowner_comm
   args:
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
     anchor_number: *anchor_num
     req_points_threshold: 4
-    compression: 8
 
     pillar_vfe:
       use_norm: true
@@ -113,29 +112,13 @@ model:
       input_dim: 384 # 128 * 3
     
     where2comm:
-      fully: false                 # true 表示不做通信裁剪（全开），一般用 false
-      fusion: max                    # 建议注意力，遮挡和多车更稳；若显存不行才用 max
-
+      fully: false                 
+      fusion: att                    
       communication:
-        threshold: 0.01
+        # threshold: 0.01
         gaussian_smooth: 
           k_size: 5
           c_sigma: 0.1
-      selector:
-        enable: true
-        mode: random  #  global random heuristic topk_iter_roi_conf
-        topk: 5
-        supply: cls
-        soft_tau: 0.0          # 训练退火到 0.3→0.1（见之前退火实现）
-      selector_coverage:
-        enable: false
-        K_max: 1               # 只允许 1 个“帮手车”
-        target: 0.80           # 覆盖目标=80%（与你预期一致）
-        tau_quantile: 0.8      # 高需求阈值
-        helper_roi_only: true  # 帮手仅发 ROI
-        gain_norm: true        # 视域归一化，避免大视野车总被选
-        supply_thresh: 0.5     # 覆盖判定稍严，促使帮手更聚焦
-        dilate_kernel: 3
 
     dir_args: *dir_args
     

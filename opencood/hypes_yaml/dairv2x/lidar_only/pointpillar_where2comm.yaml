@@ -14,7 +14,7 @@ test_dir: "/mnt/datasets/my_dair_v2x/v2x_c/cooperative-vehicle-infrastructure/va
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 4
+  batch_size: &batch_size 16
   epoches: 31
   eval_freq: 5
   save_freq: 5

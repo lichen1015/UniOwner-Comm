@@ -5,7 +5,7 @@ test_dir: "/mnt/datasets/open2v_data_dumping/test"
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 2
+  batch_size: &batch_size 6
   epoches: 31
   eval_freq: 5
   save_freq: 5

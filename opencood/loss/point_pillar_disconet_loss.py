@@ -30,8 +30,6 @@ class PointPillarDiscoNetLoss(PointPillarLoss):
         teacher_rm = output_dict['teacher_reg_preds']
         teather_psm = output_dict['teacher_cls_preds']
         
-
-        
         feature = output_dict['feature']
         teacher_feature = output_dict['teacher_feature']
         kl_loss_mean = nn.KLDivLoss(size_average=True, reduce=True)

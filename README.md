@@ -32,15 +32,13 @@ dataset
     └── v2xsim_infos_val.pkl
 ```
 
-Note that
+## Train and Inference
 
-1. `*.pkl` file in `v2xsim2_info` can be found in [Google Drive](https://drive.google.com/drive/folders/16_KkyjV9gVFxvj2YDCzQm1s9bVTwI0Fw?usp=sharing)
-2. use  complemented annotation for DAIR-V2X in `my_dair_v2x` [Google Drive](https://drive.google.com/file/d/13g3APNeHBVjPcF-nTuUoNOSGyTzdfnUK/view?usp=sharing), see [Complemented Annotations for DAIR-V2X-C](https://github.com/yifanlu0227/CoAlign?tab=readme-ov-file#complemented-annotations-for-dair-v2x-c-) for more details.
-
-[//]: # (## Checkpoints)
-
-[//]: # ()
-[//]: # (Download: [Google Drive]&#40;https://drive.google.com/drive/folders/1T3LLCn257Gynoqmm_HeXJu3Q8PBYGHfL?usp=sharing&#41;)
+```shell
+CUDA_VISIBLE_DEVICES=0,1,2,3 python -m torch.distributed.launch  --nproc_per_node=4 --use_env opencood/tools/train_ddp_syncbn.py \
+  -y opencood/hypes_yaml/opv2v/lidar_only/pointpillar_uniowner_comm.yaml \
+  -p uoc_bs4_att --run_test
+```
 
 ## Acknowlege
 

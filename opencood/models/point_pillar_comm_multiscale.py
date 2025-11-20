@@ -206,6 +206,7 @@ class PointPillarCommMultiscale(nn.Module):
         bits_per_agent_total = 0.0                    # Σ_i  comm_rate_i * Hi*Wi * Ci * bits_i
         bits_denominator_total = 0.0                  # Σ_i  Hi*Wi * Ci * bits_i（用于等效占比）
         fps = getattr(self, "eval_fps", 10.0)         # 评测FPS（如 10Hz）
+        avg_collaborators = (sum(record_len) / (len(record_len) + 1e-5)) - 1.0
 
         for i, fuse_module in enumerate(self.fusion_net):
             feature_i = feature_list[i]               # (N, Ci, Hi, Wi)
@@ -223,12 +224,13 @@ class PointPillarCommMultiscale(nn.Module):
             else:
                 comm_rate_i_f = float(comm_rate_i if comm_rate_i is not None else 1.0)
 
-            # 该层的比特基数
-            _, _, Hi, Wi = feature_i.shape
-            bits_i = (Hi * Wi) * _elem_bits(feature_i.dtype)
+            # 该层的比特基数 
+            # like communcation 
+            _, Ci, Hi, Wi = feature_i.shape
+            bits_i = (Hi * Wi * Ci) * _elem_bits(feature_i.dtype)
 
             # 累加
-            bits_per_agent_total     += comm_rate_i_f * bits_i * 4
+            bits_per_agent_total     += comm_rate_i_f * bits_i * avg_collaborators
             bits_denominator_total   += bits_i
 
             fused_feature_list.append(x_out)

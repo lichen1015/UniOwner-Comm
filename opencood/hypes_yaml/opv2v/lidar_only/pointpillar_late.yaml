@@ -1,14 +1,14 @@
 name: opv2v_late
-root_dir: "dataset/OPV2V/train"
-validate_dir: "dataset/OPV2V/validate"
-test_dir: "dataset/OPV2V/test"
+root_dir: "/mnt/datasets/open2v_data_dumping/train"
+validate_dir: "/mnt/datasets/open2v_data_dumping/validate"
+test_dir: "/mnt/datasets/open2v_data_dumping/test"
 
 yaml_parser: "load_point_pillar_params"
 train_params:
   batch_size: &batch_size 4
-  epoches: 40
-  eval_freq: 4
-  save_freq: 1
+  epoches: 31
+  eval_freq: 5
+  save_freq: 5
   max_cav: &max_cav 5
 
 input_source: ['lidar']

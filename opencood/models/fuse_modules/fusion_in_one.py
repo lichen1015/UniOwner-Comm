@@ -513,4 +513,3 @@ class Where2comm(nn.Module):
                                   normalized_affine_matrix, use_warp_feature=False)
         
         return x_out, communication_rates
- 

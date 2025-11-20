@@ -31,7 +31,7 @@ class OAOHead(nn.Module):
         return torch.sigmoid(self.trunk(x))  # (sumN, 1, H, W)
 
 
-class PointPillarDynamicSelect(nn.Module):
+class PointPillarUniownerComm(nn.Module):
     """
     PointPillar + Multi-scale fusion (Submodular2Comm).
     关键改动：
@@ -40,7 +40,7 @@ class PointPillarDynamicSelect(nn.Module):
       3) 推理阶段“非融合直出”的逻辑抽出到 inference_single_no_fusion()
     """
     def __init__(self, args):
-        super(PointPillarDynamicSelect, self).__init__()
+        super(PointPillarUniownerComm, self).__init__()
 
         # === VFE & Scatter ===
         self.pillar_vfe = PillarVFE(
@@ -73,7 +73,6 @@ class PointPillarDynamicSelect(nn.Module):
         for i in range(len(args['base_bev_backbone']['layer_nums'])):
             self.fusion_net.append(Mono2comm(args['where2comm'], dim=args['feat_dim'][i]))
 
-        # === 输出通道 ===
         self.out_channel = sum(args['base_bev_backbone']['num_upsample_filter'])
 
         self.shrink_flag = 'shrink_header' in args
@@ -96,6 +95,7 @@ class PointPillarDynamicSelect(nn.Module):
 
         self.obj_head = OAOHead(in_channels=self.out_channel, hidden_ratio=0.5)
 
+        # === 可选冻结 ===
         if args.get('backbone_fix', False):
             self.backbone_fix()
 
@@ -114,12 +114,10 @@ class PointPillarDynamicSelect(nn.Module):
         if self.use_dir:
             for p in self.dir_head.parameters(): p.requires_grad = False
 
+
         print("[Info] Backbone fixed (obj_head kept trainable).")
 
     def _build_req_mask(self, voxel_num_points, voxel_coords, record_len, like_tensor):
-        """
-        返回 req_mask: (sumN,1,H0,W0) 或 None
-        """
         if not (not self.training and self.req_points_threshold > 0):
             return None
         points_map = self.simple_scatter(voxel_num_points.unsqueeze(1), voxel_coords).float()  # (sumN,1,H0,W0)
@@ -157,7 +155,6 @@ class PointPillarDynamicSelect(nn.Module):
             feat_2d = self.shrink_conv(feat_2d)
         if self.compression:
             feat_2d = self.naive_compressor(feat_2d)
-
         conf_map = self.obj_head(feat_2d)  # (sumN,1,H0,W0)
 
         cls_preds = self.cls_head(feat_2d)
@@ -191,6 +188,7 @@ class PointPillarDynamicSelect(nn.Module):
         batch_dict = self.scatter(batch_dict)
         batch_dict = self.backbone(batch_dict)
         
+        # for intermediate-late fusion, get the single detection results
         if not ego_flag and not self.training:
             return self.inference_single_no_fusion(batch_dict)
 
@@ -213,16 +211,16 @@ class PointPillarDynamicSelect(nn.Module):
 
         feature_list = self.backbone.get_multiscale_feature(batch_dict['spatial_features'])
         fused_feature_list = []
-        
-        # 带宽统计（每协同车）：
+
         bits_numer_total = 0.0       # Σ_i  (comm_rate_i_mean * Hi*Wi * Ci * bits_i)
-        bits_denom_total = 0.0       # Σ_i  (Hi*Wi * Ci * bits_i)  → 做“等效占比”的分母
+        bits_denom_total = 0.0       # Σ_i  (Hi*Wi * Ci * bits_i)
+        avg_collaborators = (sum(record_len) / (len(record_len) + 1e-5)) - 1.0
         
         for i, fuse_module in enumerate(self.fusion_net):
             x_i = feature_list[i]  # (sumN, C_i, H_i, W_i)
             x_out, comm_rate_i = fuse_module(
-                x_i,                 # 特征（待通信层）
-                psm_single,          # ★ 每车单通道 conf_map（与第0层同尺度；模块内会插值到目标层）
+                x_i,
+                psm_single,
                 record_len,
                 normalized_affine_matrix,
                 req_mask
@@ -233,12 +231,12 @@ class PointPillarDynamicSelect(nn.Module):
                 comm_rate_i_f = float(comm_rate_i.detach().float().mean().item())
             else:
                 comm_rate_i_f = float(comm_rate_i if comm_rate_i is not None else 1.0)
-                
+
             _, Ci, Hi, Wi = x_i.shape
             # num_senders = sum(max(int(n) - 1, 0) for n in record_len)
-            bits_i = Hi * Wi * _elem_bits(x_i.dtype)  # 像素乘 每像素的比特
+            bits_i = Hi * Wi * Ci * _elem_bits(x_i.dtype)
 
-            bits_numer_total += comm_rate_i_f * bits_i * 4  # assume agent is 4
+            bits_numer_total += comm_rate_i_f * bits_i * avg_collaborators  
             bits_denom_total += bits_i
 
         fused_feature = self.backbone.decode_multiscale_feature(fused_feature_list)  # (sumN, C_out, H0, W0)
@@ -247,9 +245,9 @@ class PointPillarDynamicSelect(nn.Module):
         if self.compression:
             fused_feature = self.naive_compressor(fused_feature)
 
-        psm = self.cls_head(fused_feature)   # 分类 logits（用于检测，不再作为通信图）
+        psm = self.cls_head(fused_feature)
         rm  = self.reg_head(fused_feature)
-        
+
         if bits_denom_total > 0:
             comm_rate_effective = bits_numer_total / bits_denom_total   # 0~1
         else:
@@ -267,7 +265,7 @@ class PointPillarDynamicSelect(nn.Module):
         if self.use_dir:
             output_dict['dir_preds'] = self.dir_head(fused_feature)
 
-        return output_dict
+        return output_dict 
 
 
 

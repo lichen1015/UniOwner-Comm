@@ -1,14 +1,14 @@
 name: v2xsim_late
-root_dir: "dataset/v2xsim2_info/v2xsim_infos_train.pkl"
-validate_dir: "dataset/v2xsim2_info/v2xsim_infos_val.pkl"
-test_dir: "dataset/v2xsim2_info/v2xsim_infos_test.pkl"
+root_dir: "/mnt/datasets/v2xsim2_info/v2xsim_infos_train.pkl"
+validate_dir: "/mnt/datasets/v2xsim2_info/v2xsim_infos_val.pkl"
+test_dir: "/mnt/datasets/v2xsim2_info/v2xsim_infos_test.pkl"
 
 yaml_parser: "load_point_pillar_params"
 train_params:
   batch_size: &batch_size 4
-  epoches: 40
-  eval_freq: 2
-  save_freq: 1
+  epoches: 31
+  eval_freq: 5
+  save_freq: 5
 
 input_source: ['lidar']
 label_type: 'lidar'

@@ -1,24 +1,32 @@
-name: opv2v_selective_comm
-root_dir: "/mnt/datasets/open2v_data_dumping/train"
-validate_dir: "/mnt/datasets/open2v_data_dumping/validate"
-test_dir: "/mnt/datasets/open2v_data_dumping/test"
+name: v2xsim_cosdh
+root_dir: "/mnt/datasets/v2xsim2_info/v2xsim_infos_train.pkl"
+validate_dir: "/mnt/datasets/v2xsim2_info/v2xsim_infos_val.pkl"
+test_dir: "/mnt/datasets/v2xsim2_info/v2xsim_infos_test.pkl"
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 2
-  epoches: 30
+  batch_size: &batch_size 4
+  epoches: 31
   eval_freq: 5
   save_freq: 5
   max_cav: &max_cav 5
 
+# noise_setting:
+#   add_noise: true
+#   args:
+#     pos_std: 0.2
+#     rot_std: 0.2
+#     pos_mean: 0
+#     rot_mean: 0
+
 input_source: ['lidar']
 label_type: 'lidar'
 
-comm_range: 70
+comm_range: 50
 
 fusion:
-  core_method: 'intermediate' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
-  dataset: 'opv2v'
+  core_method: 'intermediate'
+  dataset: 'v2xsim'
   args: 
     proj_first: false
 
@@ -27,12 +35,12 @@ preprocess:
   # options: BasePreprocessor, VoxelPreprocessor, BevPreprocessor
   core_method: 'SpVoxelPreprocessor'
   args:
-    voxel_size: &voxel_size [0.4, 0.4, 4]
+    voxel_size: &voxel_size [0.4, 0.4, 5]
     max_points_per_voxel: 32
     max_voxel_train: 32000
     max_voxel_test: 70000
-  # lidar range for each individual cav. Format: xyzxyz minmax
-  cav_lidar_range: &cav_lidar [-140.8, -38.4, -3, 140.8, 38.4, 1]
+  # lidar range for each individual cav.
+  cav_lidar_range: &cav_lidar [-32, -32, -3, 32, 32, 2]
 
 data_augment:
   - NAME: random_world_flip
@@ -45,7 +53,7 @@ data_augment:
     WORLD_SCALE_RANGE: [ 0.95, 1.05 ]
 
 # anchor box related
-postprocess: &postprocess_params
+postprocess:
   core_method: 'VoxelPostprocessor' # VoxelPostprocessor, BevPostprocessor supported
   gt_range: *cav_lidar
   anchor_args:
@@ -59,7 +67,7 @@ postprocess: &postprocess_params
   target_args:
     pos_threshold: 0.6
     neg_threshold: 0.45
-    score_threshold: 0.2
+    score_threshold: 0.20
   order: 'hwl' # hwl or lwh
   max_num: 100 # maximum number of objects in a single frame. use this number to make sure different frames has the same dimension in the same batch
   nms_thresh: 0.15
@@ -72,16 +80,16 @@ postprocess: &postprocess_params
 
 # model related
 model:
-  core_method: point_pillar_selective_comm
+  core_method: point_pillar_how2comm
+  
   args:
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
-    anchor_number: *anchor_num
+    anchor_number: *achor_num
     max_cav: *max_cav
+    compression: 0 
     backbone_fix: false
-    supervise_single: false
-    req_points_threshold: 4
-    compression: 16
+    flow_flag: true  
 
     pillar_vfe:
       use_norm: true
@@ -92,40 +100,62 @@ model:
       num_features: 64
 
     base_bev_backbone:
-      layer_nums: &layer_nums [3, 5, 8]
+      resnet: True
+      layer_nums: &layer_nums [3, 4, 5]
       layer_strides: [2, 2, 2]
       num_filters: &num_filters [64, 128, 256]
       upsample_strides: [1, 2, 4]
       num_upsample_filter: [128, 128, 128]
+      compression: 0
       voxel_size: *voxel_size
-    
-    feat_dim: [64, 128, 256]
-
     shrink_header:
       kernal_size: [ 3 ]
       stride: [ 1 ]
       padding: [ 1 ]
       dim: [ 256 ]
-      input_dim: 384 # 128 * 3
-    anchor_num: *anchor_num
+      input_dim: 384 
 
-    where2comm:
-      fully: false                 # true 表示不做通信裁剪（全开），一般用 false
-      fusion: max                    # 建议注意力，遮挡和多车更稳；若显存不行才用 max
-
+    fusion_args:
+      voxel_size: *voxel_size
+      downsample_rate: 1
+      in_channels: 256
+      n_head: 8
+      dropout_rate: 0
+      only_attention: true
       communication:
-        threshold: 0.01
-        gaussian_smooth: 
+        thre: 0.01
+        compressed_dim: 2  
+        request_flag: True
+        gaussian_smooth:
           k_size: 5
-          c_sigma: 0.1
-      selector:
-        enable: true
-        mode: heuristic # heuristic random global heuristic_roi heuristic_noise
-        topk: 1
-        supply: cls
-        soft_tau: 0.0          # 训练退火到 0.3→0.1（见之前退火实现）
-  
-    dir_args: *dir_args
+          c_sigma: 1.0
+      communication_flag: True
+      agg_operator:
+        mode: 'STCFormer'
+        feature_dim: 256
+        n_head: 8
+        depth: 1
+        embed_pos: None
+        with_spe: false
+        with_scm: false
+        hetero: False
+      multi_scale: true
+      frame: *frame
+      layer_nums: *layer_nums
+      num_filters: *num_filters
+      temporal_fusion:  
+        height: [100, 50, 25, 100]
+        width: [352, 176, 88, 352]
+        layers: 1 
+        channel: [64, 128, 256, 256]
+        gate: False
+        n_head: 5
+        rte_ratio: 1
+        hidden_dim: [64, 128, 256, 256]  
+        delay: 0
+        compressed_dim: 2  
+      only_ego: False
+    
 
 loss:
   core_method: point_pillar_loss
@@ -135,7 +165,7 @@ loss:
       type: 'SigmoidFocalLoss'
       alpha: 0.25
       gamma: 2.0
-      weight: 1.0
+      weight: 2.0
     reg:
       type: 'WeightedSmoothL1Loss'
       sigma: 3.0
@@ -145,7 +175,7 @@ loss:
       type: 'WeightedSoftmaxClassificationLoss'
       weight: 0.2
       args: *dir_args
-      
+
 optimizer:
   core_method: Adam
   lr: 0.002

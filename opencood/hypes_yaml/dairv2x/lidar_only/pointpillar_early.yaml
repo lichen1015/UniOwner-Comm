@@ -1,15 +1,15 @@
 name: dairv2x_early
-data_dir: "dataset/my_dair_v2x/v2x_c/cooperative-vehicle-infrastructure"
-root_dir: "dataset/my_dair_v2x/v2x_c/cooperative-vehicle-infrastructure/train.json"
-validate_dir: "dataset/my_dair_v2x/v2x_c/cooperative-vehicle-infrastructure/val.json"
-test_dir: "dataset/my_dair_v2x/v2x_c/cooperative-vehicle-infrastructure/val.json"
+data_dir: "/mnt/datasets/my_dair_v2x/v2x_c/cooperative-vehicle-infrastructure"
+root_dir: "/mnt/datasets/my_dair_v2x/v2x_c/cooperative-vehicle-infrastructure/train.json"
+validate_dir: "/mnt/datasets/my_dair_v2x/v2x_c/cooperative-vehicle-infrastructure/val.json"
+test_dir: "/mnt/datasets/my_dair_v2x/v2x_c/cooperative-vehicle-infrastructure/val.json"
 
 yaml_parser: "load_point_pillar_params"
 train_params:
   batch_size: &batch_size 4
-  epoches: 40
-  eval_freq: 2
-  save_freq: 1
+  epoches: 31
+  eval_freq: 5
+  save_freq: 5
   max_cav: &max_cav 5
 
 input_source: ['lidar']

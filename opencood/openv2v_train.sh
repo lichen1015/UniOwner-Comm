@@ -1,2 +1,0 @@
-CUDA_VISIBLE_DEVICES=0 python opencood/tools/train.py -y opencood/hypes_yaml/opv2v/lidar_only/pointpillar_dynamic_select.yaml \
-   -p 10_18/single_gpu_region_recognition_bs2 # [--model_dir MODEL_FOLDER]

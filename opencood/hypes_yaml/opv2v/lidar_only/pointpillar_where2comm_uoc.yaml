@@ -1,4 +1,4 @@
-name: opv2v_selective_comm
+name: opv2v_where2comm_uoc
 root_dir: "/mnt/datasets/open2v_data_dumping/train"
 validate_dir: "/mnt/datasets/open2v_data_dumping/validate"
 test_dir: "/mnt/datasets/open2v_data_dumping/test"
@@ -67,12 +67,10 @@ postprocess: &postprocess_params
     dir_offset: 0.7853
     num_bins: 2
     anchor_yaw: *anchor_yaw
-  confidence_beta: 0.9
-  confidence_threshold: 0.3
 
 # model related
 model:
-  core_method: point_pillar_dynamic_select
+  core_method: point_pillar_where2comm_uoc
   args:
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
@@ -80,7 +78,7 @@ model:
     max_cav: *max_cav
     backbone_fix: false
     supervise_single: false
-    req_points_threshold: 4
+    # compression: 0
 
     pillar_vfe:
       use_norm: true
@@ -96,6 +94,7 @@ model:
       num_filters: &num_filters [64, 128, 256]
       upsample_strides: [1, 2, 4]
       num_upsample_filter: [128, 128, 128]
+      compression: 0
       voxel_size: *voxel_size
     
     feat_dim: [64, 128, 256]
@@ -105,19 +104,18 @@ model:
       stride: [ 1 ]
       padding: [ 1 ]
       dim: [ 256 ]
-      input_dim: 384
+      input_dim: 384 # 128 * 3
     anchor_num: *anchor_num
 
     where2comm:
-      fully: false                 # true 表示不做通信裁剪（全开），一般用 false
-      fusion: max                    # 建议注意力，遮挡和多车更稳；若显存不行才用 max
-
+      fully: false
+      fusion: att
       communication:
-        threshold: 0.01
+        k_ratio: 1.0
         gaussian_smooth:
           k_size: 5
           c_sigma: 1.0
-
+  
     dir_args: *dir_args
 
 loss:

@@ -2,7 +2,8 @@
 # Author: Yifan Lu <yifan_lu@sjtu.edu.cn>
 # License: TDG-Attribution-NonCommercial-NoDistrib
 
-
+import matplotlib
+matplotlib.use('Agg')   # 必须在 import matplotlib.pyplot as plt 之前
 from matplotlib import pyplot as plt
 import numpy as np
 import copy
@@ -20,7 +21,8 @@ except Exception:
 
 import numpy as np
 
-def _rot_x(a):
+# ===== 视角控制：欧拉角旋转 + 缩放（可当作相机抬高、向下看） =====
+def _rot_x(a): 
     c, s = np.cos(a), np.sin(a)
     return np.array([[1, 0, 0],
                      [0, c, -s],
@@ -126,7 +128,7 @@ def _pick_operand_for_colors(pcd_np, canvas, canvas_xy, mode):
 def visualize(infer_result, pcd, pc_range, save_path,
               method='3d', left_hand=False,
               point_color_mode='auto',
-              point_cmap='turbo',
+              point_cmap=None,
               point_radius=-1,):    
         """
         Visualize the prediction, ground truth with point cloud together.
@@ -172,10 +174,11 @@ def visualize(infer_result, pcd, pc_range, save_path,
 
         if pred_box_tensor is not None:
             pred_box_np = pred_box_tensor.cpu().numpy()
-            pred_name = ['pred'] * pred_box_np.shape[0]
+            pred_name = None
 
             score = infer_result.get("score_tensor", None)
             if score is not None:
+                pred_name = ['pred'] * pred_box_np.shape[0]
                 score_np = score.cpu().numpy()
                 pred_name = [f'score:{score_np[i]:.3f}' for i in range(score_np.shape[0])]
 
@@ -217,22 +220,32 @@ def visualize(infer_result, pcd, pc_range, save_path,
                               (pc_range[3]-pc_range[0])*10),
                 canvas_x_range=(pc_range[0], pc_range[3]),
                 canvas_y_range=(pc_range[1], pc_range[4]), left_hand=left_hand)
-            canvas.canvas[...] = 255 if canvas.canvas.dtype == np.uint8 else 1.0
+            canvas.canvas[...] = 0 if canvas.canvas.dtype == np.uint8 else 1.0
             canvas_xy, valid_mask = canvas.get_canvas_coords(pcd_np)
 
             operand = _pick_operand_for_colors(pcd_np, canvas, canvas_xy, point_color_mode)
             canvas.draw_canvas_points(
                 canvas_xy[valid_mask],
                 radius=point_radius,
-                colors=point_cmap if isinstance(point_cmap, str) else (255,255,255),
+                colors=point_cmap if isinstance(point_cmap, str) else (0,200,200),
                 colors_operand=operand[valid_mask]
             )
 
-            # 下面保持原逻辑：画框（若需要）
+            # 画 GT 框（Ground Truth）
             if gt_box_tensor is not None:
-                canvas.draw_boxes(gt_box_np, colors=(0,255,0), texts=gt_name)
+                canvas.draw_boxes(gt_box_np, 
+                                # colors=(135, 215, 157), 
+                                colors=(0,255,0),
+                                box_line_thickness=4,  # 较粗的虚线
+                                texts=gt_name)
+
+            # 画预测框（Predictions）
             if pred_box_tensor is not None:
-                canvas.draw_boxes(pred_box_np, colors=(255,0,0), ) # texts=pred_name
+                canvas.draw_boxes(pred_box_np, 
+                                # colors=(214, 128, 99), 
+                                colors=(255,0,0),
+                                box_line_thickness=4,  # 较粗的实线
+                                texts=pred_name)
 
             # heterogeneous
             lidar_agent_record = infer_result.get("lidar_agent_record", None)
@@ -243,112 +256,55 @@ def visualize(infer_result, pcd, pc_range, save_path,
                     text = ['lidar'] if islidar else ['camera']
                     color = (0,191,255) if islidar else (255,185,15)
                     canvas.draw_boxes(cav_box_np[i:i+1], colors=color, texts=text)
-        # elif method == '3d':
-        #     canvas = canvas_3d.Canvas_3D(left_hand=left_hand)
-        #     canvas.canvas[...] = 255 if canvas.canvas.dtype == np.uint8 else 1.0
-
-        #     pcd_np = pcd.cpu().numpy()
-        #     pcd3   = pcd_np[:, :3]
-
-        #     # >>> 关键：应用视角（可调这四个量） <<<
-        #     VIEW_CFG = {
-        #         "yaw_deg":   0,   # 左右转；负值≈向右看一点
-        #         "pitch_deg":  0,   # 往下俯视（20~45°都好看）
-        #         "roll_deg":    0,   # 基本不用
-        #         "zoom":       0.50, # 轻微放大；<1 退远，>1 拉近
-        #     }
-        #     pcd3_view = apply_view_transform(
-        #         pcd3,
-        #         center=np.array([0, 0, 0], dtype=np.float32),  # 以雷达原点为“相机绕转中心”
-        #         left_hand=left_hand,
-        #         **VIEW_CFG
-        #     )
-
-        #     # 用“变更视角后的点云”去投影
-        #     canvas_xy, valid_mask = canvas.get_canvas_coords(pcd3_view)
-
-        #     # ======= 下面保持你的着色/绘制逻辑不变 =======
-        #     if point_color_mode == 'radial':
-        #         origin_center = canvas.get_canvas_coords(np.zeros((1, 3), dtype=pcd3_view.dtype))[0][0]
-        #         colors_operand = np.linalg.norm(canvas_xy - origin_center, axis=1)
-        #     elif point_color_mode in ('intensity', 'auto'):
-        #         colors_operand = pcd_np[:, 3] if pcd_np.shape[1] >= 4 else pcd_np[:, 2]
-        #     elif point_color_mode in ('z', 'z-value'):
-        #         colors_operand = pcd_np[:, 2]
-        #     elif point_color_mode == 'agent':
-        #         if pcd_np.shape[1] >= 5:
-        #             colors_operand = pcd_np[:, 4]
-        #         elif pcd_np.shape[1] >= 4:
-        #             colors_operand = pcd_np[:, 3]
-        #         else:
-        #             origin_center = canvas.get_canvas_coords(np.zeros((1, 3), dtype=pcd3_view.dtype))[0][0]
-        #             colors_operand = np.linalg.norm(canvas_xy - origin_center, axis=1)
-        #     else:
-        #         colors_operand = np.zeros((pcd_np.shape[0],), dtype=float)
-
-        #     canvas.draw_canvas_points(
-        #         canvas_xy[valid_mask],
-        #         radius=point_radius,
-        #         colors=point_cmap,                 # 如 'viridis'/'turbo'
-        #         colors_operand=colors_operand[valid_mask]
-        #     )
-
-        #     if gt_box_tensor is not None:
-        #         canvas.draw_boxes(gt_box_np, colors=(0, 255, 0), texts=gt_name)
-        #     if pred_box_tensor is not None:
-        #         canvas.draw_boxes(pred_box_np, colors=(255, 0, 0))
-
-        #     lidar_agent_record = infer_result.get("lidar_agent_record", None)
-        #     cav_box_np = infer_result.get("cav_box_np", None)
-        #     if lidar_agent_record is not None:
-        #         cav_box_np = copy.deepcopy(cav_box_np)
-        #         for i, islidar in enumerate(lidar_agent_record):
-        #             text = ['lidar'] if islidar else ['camera']
-        #             color = (0, 191, 255) if islidar else (255, 185, 15)
-        #             canvas.draw_boxes(cav_box_np[i:i+1], colors=color, texts=text)
-
         elif method == '3d':
             canvas = canvas_3d.Canvas_3D(left_hand=left_hand)
             canvas.canvas[...] = 255 if canvas.canvas.dtype == np.uint8 else 1.0  # 关键：3D 只用 xyz
             pcd3 = pcd_np[:, :3]
-            canvas_xy, valid_mask = canvas.get_canvas_coords(pcd3)  # 计算 colors_operand（仅对 radial 特殊处理）
+            canvas_xy, valid_mask = canvas.get_canvas_coords(pcd3)
 
             if point_color_mode == 'radial':
-                # ⚠️ 这里一定要传 (1,3) 的零点
                 origin_center = canvas.get_canvas_coords(np.zeros((1, 3), dtype=pcd3.dtype))[0][0]
                 colors_operand = np.linalg.norm(canvas_xy - origin_center, axis=1)
             elif point_color_mode in ('intensity', 'auto'):
-                if pcd_np.shape[1] >= 4:  # 第4列当强度；auto 也走这里
+                if pcd_np.shape[1] >= 4:
                     colors_operand = pcd_np[:, 3]
                 else:
-                    colors_operand = pcd_np[:, 2]  # 没强度就用 z
+                    colors_operand = pcd_np[:, 2]
             elif point_color_mode in ('z', 'z-value'):
                 colors_operand = pcd_np[:, 2]
             elif point_color_mode == 'agent':
                 if pcd_np.shape[1] >= 5:
-                    colors_operand = pcd_np[:, 4]  # 你融合时放在第5列
+                    colors_operand = pcd_np[:, 4]
                 elif pcd_np.shape[1] >= 4:
-                    colors_operand = pcd_np[:, 3]  # 或者第4列
+                    colors_operand = pcd_np[:, 3]
                 else:
-                    # 回退 radial：以画布中心距离
                     origin_center = canvas.get_canvas_coords(np.zeros((1, 3), dtype=pcd3.dtype))[0][0]
                     colors_operand = np.linalg.norm(canvas_xy - origin_center, axis=1)
             else:  # 'constant' 或其他
                 colors_operand = np.zeros((pcd_np.shape[0],), dtype=float)
 
-            # 传 cmap 名称 + operand；半径可选让点更饱满
+
             canvas.draw_canvas_points(
                 canvas_xy[valid_mask],
                 radius=point_radius,
-                colors=point_cmap,  # 例如 'Spectral'/'viridis'/'turbo'
+                colors=point_cmap,
                 colors_operand=colors_operand[valid_mask]
             )
 
-            # 下面画框逻辑保持不变
             if gt_box_tensor is not None:
-                canvas.draw_boxes(gt_box_np, colors=(0, 255, 0), texts=gt_name)
+                canvas.draw_boxes(gt_box_np, 
+                                # colors=(135, 215, 157), 
+                                colors=(0,255,0),
+                                box_line_thickness=2,  # 较粗的虚线
+                                texts=gt_name)
+
             if pred_box_tensor is not None:
-                canvas.draw_boxes(pred_box_np, colors=(255, 0, 0), )  # texts=pred_name
+                canvas.draw_boxes(pred_box_np, 
+                                # colors=(214, 128, 99), 
+                                colors=(255,0,0),
+                                box_line_thickness=2,  # 较粗的实线
+                                texts=pred_name)
+
 
             # heterogeneous 
             lidar_agent_record = infer_result.get("lidar_agent_record", None)
@@ -370,4 +326,5 @@ def visualize(infer_result, pcd, pc_range, save_path,
         plt.savefig(save_path, transparent=False, dpi=500)
         plt.clf()
         plt.close()
+
 

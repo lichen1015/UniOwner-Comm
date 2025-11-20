@@ -2,7 +2,7 @@
 # Author: Yifan Lu <yifan_lu@sjtu.edu.cn>
 # License: TDG-Attribution-NonCommercial-NoDistrib
 # Support F-Cooper, Self-Att, DiscoNet(wo KD), V2VNet, V2XViT, When2comm
-
+import torch
 import torch.nn as nn
 from icecream import ic
 from opencood.models.sub_modules.pillar_vfe import PillarVFE
@@ -13,6 +13,7 @@ from opencood.models.sub_modules.downsample_conv import DownsampleConv
 from opencood.models.sub_modules.naive_compress import NaiveCompressor
 from opencood.models.fuse_modules.fusion_in_one import MaxFusion, AttFusion, DiscoFusion, V2VNetFusion, V2XViTFusion, When2commFusion
 from opencood.utils.transformation_utils import normalize_pairwise_tfm
+from opencood.models.point_pillar_comm_multiscale import _elem_bits
 
 class PointPillarBaseline(nn.Module):
     """
@@ -77,6 +78,11 @@ class PointPillarBaseline(nn.Module):
  
         if 'backbone_fix' in args.keys() and args['backbone_fix']:
             self.backbone_fix()
+            
+        self.k_ratio = args.get('k_ratio', 0)
+        if 'where2comm' in args:
+            self.k_ratio =  args['where2comm']['communication']['k_ratio']
+            print(f"Coalign modify K ratio={self.k_ratio}")
 
     def backbone_fix(self):
         """
@@ -128,15 +134,78 @@ class PointPillarBaseline(nn.Module):
             spatial_features_2d = self.shrink_conv(spatial_features_2d)
 
         if self.compression:
-            spatial_features_2d = self.naive_compressor(spatial_features_2d, not self.training)
+            spatial_features_2d = self.naive_compressor(spatial_features_2d, use_fp16=not self.training)
 
-        fused_feature = self.fusion_net(spatial_features_2d, record_len, normalized_affine_matrix)
+        # --- (新增) 带宽限制与计算 ---
+        N, Ci, Hi, Wi = spatial_features_2d.shape
+
+        # 1. 获取带宽计算的必要参数
+        avg_collaborators = (sum(record_len) / (len(record_len) + 1e-5)) - 1.0
+        fps = getattr(self, "eval_fps", 10.0)
+        
+        # 假定在 __init__ 中定义了 self.k_ratio
+        K_RATIO = getattr(self, "k_ratio", 1.0) 
+        use_top_k = (K_RATIO > 0.0 and K_RATIO < 1.0) and (not self.training)
+        
+        comm_rate_effective = 1.0 # 默认通信率
+        feature_to_fuse = spatial_features_2d # 默认发送的特征
+
+        # 2. 如果 k_ratio 生效 (例如 0.3) 且不在训练中
+        if use_top_k:
+            # 2.1. 计算特征“能量”作为置信图 (N, 1, Hi, Wi)
+            confidence_map = torch.norm(spatial_features_2d, dim=1, keepdim=True)
+            
+            # 2.2. 计算 K
+            K = int(Hi * Wi * K_RATIO)
+
+            # 2.3. 展平并找到 Top-K 索引
+            flat_confidence = confidence_map.reshape(N, Hi * Wi)
+            _, indices = torch.topk(flat_confidence, k=K, dim=-1)
+
+            # 2.4. 创建掩码 (N, H*W)
+            communication_mask_flat = torch.zeros_like(flat_confidence)
+            communication_mask_flat.scatter_(
+                dim=-1, 
+                index=indices, 
+                src=torch.ones_like(indices, dtype=spatial_features_2d.dtype)
+            )
+
+            # 2.5. 恢复形状 (N, 1, Hi, Wi)
+            communication_mask = communication_mask_flat.reshape(N, 1, Hi, Wi)
+            
+            # 2.6. (关键) 应用掩码
+            feature_to_fuse = spatial_features_2d * communication_mask
+            
+            # 2.7. (关键) 更新真实的通信率
+            comm_rate_effective = K_RATIO
+        
+        # 3. 计算带宽 (无论是否 Top-K 都要计算)
+        
+        # 3.1. 计算单车发送满配特征的比特数
+        bits_per_agent = Hi * Wi * Ci * _elem_bits(spatial_features_2d.dtype)
+        
+        # 3.2. 计算单车实际发送的比特数
+        actual_bits_per_agent = bits_per_agent * comm_rate_effective
+        
+        # 3.3. 计算当前批次(场景)的“平均总带宽”(乘以协作车数)
+        total_bits_per_scene = actual_bits_per_agent * avg_collaborators
+        
+        # 3.4. 转换为 Kbps
+        kbps_per_frame = (total_bits_per_scene * fps) / 1000.0
+        # --- (新增结束) ---
+        
+        # (修改) 传入被掩码 (或未被掩码) 的特征
+        fused_feature = self.fusion_net(feature_to_fuse, record_len, normalized_affine_matrix)
 
         psm = self.cls_head(fused_feature)
         rm = self.reg_head(fused_feature)
 
+        # (修改) 更新 output_dict
         output_dict = {'cls_preds': psm,
-                       'reg_preds': rm}
+                       'reg_preds': rm,
+                       'comm_rate': comm_rate_effective,
+                       'comm_kbps_per_frame': kbps_per_frame,
+                       }
 
         if self.use_dir:
             output_dict.update({'dir_preds': self.dir_head(fused_feature)})

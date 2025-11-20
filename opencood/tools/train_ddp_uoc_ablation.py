@@ -60,11 +60,12 @@ def run_eval(saved_path, fusion_method, add_noise=False, eval_gpu="0"):
     except Exception:
         pass
 
-    script = "opencood/tools/inference_w_noise.py" if add_noise else "opencood/tools/inference.py"
+    script = "opencood/tools/inference_w_noise.py" if add_noise else "opencood/tools/inference_bandwidth.py"
     cmd = [
         "python", script,
         "--model_dir", saved_path,
         "--fusion_method", fusion_method,
+        "--is_vis",
         # "--config", "/abs/path/to/eval.yaml",  # 如有，建议显式传入
     ]
 
@@ -92,6 +93,12 @@ def train_parser():
                         help="train with mixed precision")
     parser.add_argument("--run_test", action='store_true',
                         help="run inference.py")
+    parser.add_argument("--no_pattern", action='store_true',
+                        help="disable pattern region recognition")
+    parser.add_argument("--no_oaohead", action='store_true',
+                        help="disable oaohead")
+    parser.add_argument("--no_owner", action='store_true',
+                        help="disable mono_sender") 
     parser.add_argument('--dist_url', default='env://',
                         help='distributed init method')
     opt = parser.parse_args()
@@ -102,7 +109,17 @@ def main():
     hypes = yaml_utils.load_yaml(opt.hypes_yaml, opt)
     hypes['project_name'] = opt.project_name
     multi_gpu_utils.init_distributed_mode(opt)  # sets opt.distributed, opt.world_size, opt.rank, opt.gpu
-
+    # ---- ablation ----
+    if opt.no_oaohead:
+        print(f"disable use oaohead..")
+        hypes['model']['args']['use_oaohead'] = False
+    if opt.no_pattern:
+        print(f"disable Pattern Region Reogntiion..")
+        hypes['model']['args']['where2comm']['communication']['use_pattern'] = False
+    if opt.no_owner:
+        print(f"disable Pattern Region Reogntiion..")
+        hypes['model']['args']['where2comm']['communication']['use_owner'] = False
+        
     # ---- seed ----
     seed = hypes.get('train_params', {}).get('seed', 42)
     set_seed(seed + (opt.rank if hasattr(opt, 'rank') else 0))

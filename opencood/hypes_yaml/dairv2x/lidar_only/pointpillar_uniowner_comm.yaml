@@ -1,4 +1,4 @@
-name: dairv2x_selective_comm
+name: dairv2x_winner_take-all
 data_dir: "/mnt/datasets/my_dair_v2x/v2x_c/cooperative-vehicle-infrastructure"
 root_dir: "/mnt/datasets/my_dair_v2x/v2x_c/cooperative-vehicle-infrastructure/train.json"
 validate_dir: "/mnt/datasets/my_dair_v2x/v2x_c/cooperative-vehicle-infrastructure/val.json"
@@ -81,13 +81,12 @@ postprocess:
 
 # model related
 model:
-  core_method: point_pillar_selective_comm
+  core_method: point_pillar_uniowner_comm
   args:
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
     anchor_number: *anchor_num
     req_points_threshold: 4
-    # compression: 16
 
     pillar_vfe:
       use_norm: true
@@ -115,20 +114,13 @@ model:
     feat_dim: [64, 128, 256]
 
     where2comm:
-      fully: false                 # true 表示不做通信裁剪（全开），一般用 false
-      fusion: max                    # 建议注意力，遮挡和多车更稳；若显存不行才用 max
-
+      fully: false                 
+      fusion: att                    
       communication:
-        threshold: 0.01
+#        threshold: 0.01
         gaussian_smooth: 
           k_size: 5
           c_sigma: 0.1
-      selector:
-        enable: true
-        mode: heuristic # heuristic random global heuristic_roi heuristic_noise
-        topk: 1
-        supply: cls
-        soft_tau: 0.0          # 训练退火到 0.3→0.1（见之前退火实现）
 
     dir_args: *dir_args
     

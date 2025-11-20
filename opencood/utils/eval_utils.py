@@ -142,7 +142,7 @@ def calculate_ap(result_stat, iou):
     return ap, mrec, mprec
 
 
-def eval_final_results(result_stat, save_path, infer_info=None):
+def eval_final_results(result_stat, save_path, infer_info=None, save_yaml=True):
     dump_dict = {}
 
     ap_30, mrec_30, mpre_30 = calculate_ap(result_stat, 0.30)
@@ -157,10 +157,11 @@ def eval_final_results(result_stat, save_path, infer_info=None):
                       'mpre_70': mpre_70,
                       'mrec_70': mrec_70,
                       })
-    if infer_info is None:
-        yaml_utils.save_yaml(dump_dict, os.path.join(save_path, 'eval.yaml'))
-    else:
-        yaml_utils.save_yaml(dump_dict, os.path.join(save_path, f'eval_{infer_info}.yaml'))
+    if save_yaml:
+        if infer_info is None:
+            yaml_utils.save_yaml(dump_dict, os.path.join(save_path, 'eval.yaml'))
+        else:
+            yaml_utils.save_yaml(dump_dict, os.path.join(save_path, f'eval_{infer_info}.yaml'))
 
     print('The Average Precision at IOU 0.3 is %.2f, '
           'The Average Precision at IOU 0.5 is %.2f, '
